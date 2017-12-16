@@ -14,7 +14,7 @@ This agent is supposed to solve environments where:
 - actions are the same in each state
 - observations are cubes of real values of given shape
 
-We will use Monte Carlo off-policy learning on eps-greedy soft-policy.
+We sort of Q-off-policy learning on eps-greedy soft-policy.
 
 TODO:
 - implement and check performance on cart agent
@@ -28,6 +28,9 @@ TODO:
   the one from policy then we can substitute the reward with its estimate
   Q(s,a) and continue - the question is what to do with weights then
   - probably reset path weight to 1
+- sensible terminate condition (rethink terminating state errors)
+- rethink state_acxtion_verrs initation as zeros - then we have potentially
+    stochastic stop condition
 
 
 The algorithm:
@@ -142,53 +145,58 @@ class IntegerCubePolicy:
     A policy that can improve itself buahahahahaha!
     A state is of dimensions given by shape.
     """
-    def __init__(self, shape, number_of_actions, eps=0.1):
+    def __init__(self, shape, number_of_actions, eps=0.1, alpha=0.05,
+                 terminate_after=1000):
         """Initialize by random integers."""
         self.shape = shape
         self.number_of_actions = number_of_actions
         self.eps = eps
-        self.greedy_arm_prob_inv = 1 / (1 - eps + eps / number_of_actions)
         self.policy = np.random.randint(number_of_actions, size=shape)
+        self.terminal = np.zeros(shape)
         self.state_action_values = np.zeros(shape+(number_of_actions,))
-        self.path_weights = np.zeros(shape+(number_of_actions,))
+        self.state_action_counters = np.zeros(shape+(number_of_actions,))
+        self.state_action_verrs = np.zeros(shape+(number_of_actions,))
+        self.state_values = np.zeros(shape)
+        self.values_improvement = 1
+        self.alpha = alpha
+        self.terminate_after = terminate_after
 
     def learn(self, episode):  # episode: [(state, action, reward), ...]
         # where reward follows (state, action)
-        path_weight = 1
-        path_return = 0
+        next_state, _, _ = episode.pop()
+        if self.terminal[next_state] > self.terminate_after:
+            self.state_action_verrs[next_state] = 0
+        elif self.terminal[next_state] > -1:
+            self.terminal[next_state] += 1
         for state, action, reward in reversed(episode):
-            path_return += reward
-            self.path_weights[state + (action,)] += path_weight
-            self.state_action_values[state + (action,)] += \
-                path_weight \
-                * (path_return - self.state_action_values[state + (action,)]) \
-                / self.path_weights[state + (action,)]
-            # if self.policy[state] == action:
-            if path_weight == 0:
-                # careful here - if we do changes to policy within this
-                # training then we might sometimes agree with non-greedy arm
-                # and use different probability below
-                # shit - below works for policy evaluation only
-                # what if we change the policy along the way - then it might
-                # not be correct
-                path_weight *= (self.policy[state] == action) \
-                               * self.greedy_arm_prob_inv
-            else:
-                break
+            self.terminal[state] = -1
+            self.state_action_counters[state + (action,)] += 1
+            q_diff = (reward + self.state_values[next_state]
+                      - self.state_action_values[state + (action,)]) \
+                * self.alpha
+            #    / self.state_action_counters[state + (action,)]
+            # compare the performance with the above (should be worse)
+            self.state_action_values[state + (action,)] += q_diff
+            self.state_action_verrs[state + (action,)] = abs(q_diff)
+            # shit - above - terminal states never get updated!
+            # IMPROVEMENT = check for convergence on each state-action
+            # remember that:
+            # - there might be loop-y actions (-inf == value)
+            # - rewards may be probabilistic
+            #       (you want remember some sort of confidence boud)
+            next_state = state
+        self.values_improvement = max(
+            np.abs(self.state_values
+                   - self.state_action_values.max(-1)
+                   ).max(),
+            self.state_action_verrs.max())
+        self.state_values = self.state_action_values.max(-1)
+        self.policy = self.state_action_values.argmax(-1)
 
     def am_i_greedy(self):
-        return (self.policy == self.state_action_values.max(-1)).all()
+        return (self.policy == self.state_action_values.argmax(-1)).all()
 
     def let_me_be_greedy(self):
-        """
-        NOT NECESSARY - REMOVE
-        What we want:
-            self.policy = self.state_action_values.argmax(-1)
-        BUT we also want ties to be broken randomly.
-        """
-        # sav = self.state_action_values
-        # maxes = np.stack([sav.max(-1) for _ in range(sav.shape[-1])], axis=-1)
-        # self.policy = (np.random.random(sav.shape) * (sav == maxes)).argmax(-1)
         self.policy = self.state_action_values.argmax(-1)
 
     def get_eps_greedy_action(self, state):
@@ -200,18 +208,14 @@ class IntegerCubePolicy:
 
 # %% tests
 # let's test!
-icp = IntegerCubePolicy((1, 3), 2, eps=0.15)
-icp.state_action_values.shape
-icp.path_weights
-1/icp.greedy_arm_prob_inv
-icp.policy
-icp.get_eps_greedy_action((0, 1))
-
 shape = (1, 3)
 number_of_actions = 2
 icp = IntegerCubePolicy(shape, number_of_actions, eps=0.1)
+precision = 0.005
+values_improvements = []
 env = MinimalEnv()
-for _ in range(5000):
+counter = 0
+while True:
     episode = []
     state = (0, env.reset())
     stop = False
@@ -220,43 +224,25 @@ for _ in range(5000):
         new_state, reward, stop, _ = env.step(action)
         episode.append((state, action, reward))
         state = (0, new_state)
+    episode.append((state, 0, 0))
     icp.learn(episode)
-    # icp.am_i_greedy()
-    icp.let_me_be_greedy()
+    values_improvements.append(icp.values_improvement)
+    counter += 1
+    if icp.values_improvement < precision or counter > 10000:
+        break
 
+plt.plot(range(len(values_improvements[-100:])), values_improvements[-100:])
+len(values_improvements)
 # although it should
 icp.policy
+print()
 icp.state_action_values
-icp.path_weights
-icp.let_me_be_greedy()
-
-episode
-
-[((0, 0), 1, -2),
- ((0, 1), 0, -1),
- ((0, 0), 1, -2),
- ((0, 1), 1, 0)]
-# example_episode = episode
-
-icp.state_action_values = np.zeros(shape+(number_of_actions,))
-icp.path_weights = np.zeros(shape+(number_of_actions,))
-
-path_weight = 1
-path_return = 0
-for state, action, reward in reversed(episode):
-    state, action, reward = episode[-1]
-    state, action, reward
-    path_return += reward
-    path_return
-    icp.path_weights[state + (action,)] += path_weight
-    icp.state_action_values[state + (action,)] += \
-        path_weight \
-        * (path_return - icp.state_action_values[state + (action,)]) \
-        / icp.path_weights[state + (action,)]
-    if icp.policy[state] == action:
-        path_weight *= icp.greedy_arm_prob_inv
-    else:
-        break
+print()
+icp.state_values
+print()
+icp.state_action_counters
+print()
+icp.state_action_verrs
 
 
 # %% Agent

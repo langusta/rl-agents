@@ -14,7 +14,7 @@ This agent is supposed to solve environments where:
 - actions are the same in each state
 - observations are cubes of real values of given shape
 
-We sort of Q-off-policy learning on eps-greedy soft-policy.
+Sort of Q-off-policy learning algorithm on eps-greedy soft-policy.
 
 TODO:
 - implement and check performance on cart agent
@@ -33,7 +33,7 @@ TODO:
     stochastic stop condition
 
 
-The algorithm:
+DEPRECATED The algorithm:
 
 pi - deterministic policy we want to learn
 mi - eps-pi policy that we use to explore (it follows pi with 1-eps prob)
@@ -62,6 +62,16 @@ iterate up to max_iterations:
     pi = Greedy(Q)
     mi = eps-Greedy(pi)
 pi is optimal
+
+The above algorithm doesn't work on environmets with loops (potentially
+infinite states). Example that breaks it:
+ S0, A1 -> S1, reward == 0
+ S0, A0 -> S0, reward == -1
+
+While trying to solve it I changed the algorithm completely - it is no longer
+Monte Carlo. Currently I go through entire episode and update Q function on
+every state-action pair. After updating Q function I recompute values of
+states.
 """
 
 
@@ -100,6 +110,15 @@ class SuttonEx4d1:
         state = ()
 
 
+class DummySpace:
+    def __init__(self, n, shape):
+        self.n = n
+        self.shape = shape
+
+    def sample(self):
+        return np.random.randint(self.n)
+
+
 class MinimalEnv:
     """
     We have three states:
@@ -118,27 +137,26 @@ class MinimalEnv:
             (2, 0): (2, 0),
             (2, 1): (2, 0)
         }
+        self.action_space = DummySpace(2, (1,))
+        self.observation_space = DummySpace(1, (1,))
 
     def reset(self):
         self.state = 0
-        return 0
+        return [0]
 
     def step(self, action):
         if action not in [0, 1]:
             self.state = 0
             return (2, 0, True, 0)
         self.state, reward = self.behaviour[(self.state, action)]
-        return (self.state, reward, self.state == 2, 0)
+        return ([self.state], reward, self.state == 2, 0)
 
 
 # minimal_env = MinimalEnv()
 # minimal_env.reset()
 # list(map(minimal_env.step, [0, 1, 0, 1, 1]))
 
-# %% Silly^2 version
 
-
-# %% Less silly version
 # %% Policy
 class IntegerCubePolicy:
     """
@@ -152,24 +170,24 @@ class IntegerCubePolicy:
         self.number_of_actions = number_of_actions
         self.eps = eps
         self.policy = np.random.randint(number_of_actions, size=shape)
-        self.terminal = np.zeros(shape)
+        # self.terminal = np.zeros(shape)
         self.state_action_values = np.zeros(shape+(number_of_actions,))
         self.state_action_counters = np.zeros(shape+(number_of_actions,))
         self.state_action_verrs = np.zeros(shape+(number_of_actions,))
         self.state_values = np.zeros(shape)
         self.values_improvement = 1
         self.alpha = alpha
-        self.terminate_after = terminate_after
+        # self.terminate_after = terminate_after
 
     def learn(self, episode):  # episode: [(state, action, reward), ...]
         # where reward follows (state, action)
         next_state, _, _ = episode.pop()
-        if self.terminal[next_state] > self.terminate_after:
-            self.state_action_verrs[next_state] = 0
-        elif self.terminal[next_state] > -1:
-            self.terminal[next_state] += 1
+        # if self.terminal[next_state] > self.terminate_after:
+        #     self.state_action_verrs[next_state] = 0
+        # elif self.terminal[next_state] > -1:
+        #     self.terminal[next_state] += 1
         for state, action, reward in reversed(episode):
-            self.terminal[state] = -1
+            # self.terminal[state] = -1
             self.state_action_counters[state + (action,)] += 1
             q_diff = (reward + self.state_values[next_state]
                       - self.state_action_values[state + (action,)]) \
@@ -179,6 +197,7 @@ class IntegerCubePolicy:
             self.state_action_values[state + (action,)] += q_diff
             self.state_action_verrs[state + (action,)] = abs(q_diff)
             # shit - above - terminal states never get updated!
+            #   it's ok - they are zero from the start
             # IMPROVEMENT = check for convergence on each state-action
             # remember that:
             # - there might be loop-y actions (-inf == value)
@@ -208,78 +227,223 @@ class IntegerCubePolicy:
 
 # %% tests
 # let's test!
-shape = (1, 3)
-number_of_actions = 2
-icp = IntegerCubePolicy(shape, number_of_actions, eps=0.1)
-precision = 0.005
-values_improvements = []
 env = MinimalEnv()
-counter = 0
-while True:
-    episode = []
-    state = (0, env.reset())
-    stop = False
-    while not stop:
-        action = icp.get_eps_greedy_action(state)
-        new_state, reward, stop, _ = env.step(action)
-        episode.append((state, action, reward))
-        state = (0, new_state)
-    episode.append((state, 0, 0))
-    icp.learn(episode)
-    values_improvements.append(icp.values_improvement)
-    counter += 1
-    if icp.values_improvement < precision or counter > 10000:
-        break
+precision = 4
+agent = SillyRLAgent(precision, env, eps=0.10, allow_determinism=False)
+agent.learn_environment(episodes_num=1000)
+agent.env_limits
+agent.learn(0.005, 10000, 1000000)
+agent.plot_all(1)
+agent.policy.policy
+agent.policy.state_action_values
+len(agent.value_improvements)
+print()
+agent.policy.values_improvement
 
-plt.plot(range(len(values_improvements[-100:])), values_improvements[-100:])
-len(values_improvements)
-# although it should
-icp.policy
-print()
-icp.state_action_values
-print()
-icp.state_values
-print()
-icp.state_action_counters
-print()
-icp.state_action_verrs
+
+# %% moving average:
+def moving_average(what, length):
+    out = np.cumsum(what)
+    out[length:] = out[length:] - out[:-length]
+    return out[length - 1:] / length
 
 
 # %% Agent
-class SillyStateSpace:
-    """
-    It should 'translate' float intervals for each state coordinate
-    to integer index of a hypercube.
-    It should allow for learning ranges of parameters.
-    """
-    pass
-
-
 class SillyRLAgent:
     """
     Silly-rl-agent-v1:
     Idea:
       - explore by acting randomly - remember ranges of state coordinates
       - once you do not see new states quantize state coordinates
-      - do monte carlo off-policy iteration on eps-greedy version of currently
-        considered policy
+      - do sort of off-policy Q learning iteration on eps-greedy version of
+        currently considered policy
     For now let's work only with:
       - discrete action spaces
       - multidimensional observation spaces
       - the same actions at every state
     Possible improvements:
-      - learning while exploring
+      - learning while exploring state space (fastes way - store episodes,
+        learn from them later)
+      - using returns instead of rewards whenever feasible (it should speed
+        up learning)
+      - experience replay - remember some amount of previous episodes and
+        do random changes from them when learning new episode
+      - when in a state that didn't learn previously and neighbour states have
+        learned - use their knowledge for start
+
+    Design:
+        - hyper-parameters:
+            - precision - the number of discrete values given coordinate of
+                state space can have
+        - first version:
+            - flatten and discretize observations
+        - next versions:
+            - flatten and discretize actions
+        - expectations:
+            - i can draw returns in the number of: episodes, steps
+            - i can draw value improvements
+            - i can tell it to draw moving average of the above
+            - i can tell it to store every i-th agent (all its insides)
+            - i can tell it to play any of stored agents
+            - learn until some trashold on value improvement or number of steps
+                - treshold and counter are arguments to learn method
+            - learn more (until new treshold or counter)
+            - [to think how] visualize policy, state values (even though state
+                space can be huge, the states actually visited are probably
+                small subset of the entire space)
+            - evaluate rewards on currently best deterministic policy
     """
-    def __init__(self, precision, number_of_actions, observation_dims):
-        self.__precision = precision
-        self.__number_of_actions = number_of_actions
-        self.__observation_dims = observation_dims
+    def __init__(self, precision, env, return_freq=10,
+                 allow_determinism=True, eps=0.1):
+        self.precision = precision
+        self.env = env
+        self.number_of_actions = env.action_space.n
+        self.eps = eps
+        self.return_freq = return_freq
+        self.allow_determinism = allow_determinism
+        # TODO - correct so that observation space gets flattened (there might
+        #   be some np functions to do this)
+        #   - do the same for env_limits!!
+        self.shape = (precision,) * env.observation_space.shape[0]
+        self.reset()
+
+    def reset(self):
+        self.policy = IntegerCubePolicy(self.shape,
+                                        self.number_of_actions,
+                                        eps=self.eps)
+        self.env_limits = np.zeros(env.observation_space.shape + (2,))
+        self.value_improvements = []
+        self.returns = []
+        self.cum_steps = []
+        self.policy_maps = None
+
+    def learn_environment(self, episodes_num=1000):
+        """
+        Does random stuff for some time to learn the boundaries of state
+        coordinates.
+
+        Potential improvements:
+            - do exploration until you stop seeing new values
+            - add some observed step value to both limits
+            - decide precision based on what you noticed
+            - store episodes to learn from them later
+            - learn while exploring [hard - probably involves some fundamental
+                redesign]
+        """
+        state = self.env.reset()
+        self.env_limits[:, 0] = state
+        self.env_limits[:, 1] = state
+        for _ in range(episodes_num):
+            state = self.env.reset()
+            stop = False
+            while not stop:
+                new_state, reward, stop, _ = env.step(
+                                             self.env.action_space.sample())
+                self.env_limits[:, 0] = np.minimum.reduce(
+                                        [self.env_limits[:, 0],
+                                         new_state])
+                self.env_limits[:, 1] = np.maximum.reduce(
+                                        [self.env_limits[:, 1],
+                                         new_state])
+                # state = new_state
+        self.policy_maps = [IntervalToIndex(a=self.env_limits[i, 0],
+                                            b=self.env_limits[i, 1],
+                                            precision=self.precision)
+                            for i in range(self.env_limits.shape[0])]
+
+    def get_cube_state(self, env_state):
+        return tuple([self.policy_maps[i](x)
+                      for i, x in enumerate(env_state)])
+
+    def learn(self, treshold=0.05, episodes_num=1000, steps_num=10000):
+        episode_cnt = 0
+        steps_cnt = 0
+        while True:
+            episode = []
+            state = self.get_cube_state(self.env.reset())
+            stop = False
+            the_return = 0
+            if episode_cnt % self.return_freq == 0:
+                deterministic_run = True
+            else:
+                deterministic_run = False
+            while not stop:
+                if deterministic_run and self.allow_determinism:
+                    action = self.policy.policy[state]
+                else:
+                    action = self.policy.get_eps_greedy_action(state)
+                new_state, reward, stop, _ = env.step(action)
+                new_state = self.get_cube_state(new_state)
+                episode.append((state, action, reward))
+                the_return += reward
+                state = new_state
+            episode.append((state, 0, 0))
+            self.policy.learn(episode)
+            self.value_improvements.append(self.policy.values_improvement)
+            episode_cnt += 1
+            steps_cnt += len(episode) - 1
+            self.cum_steps.append(steps_cnt)
+            if deterministic_run:
+                self.returns.append(the_return)
+
+            if self.policy.values_improvement < treshold \
+               or episode_cnt > episodes_num or steps_cnt > steps_num:
+                break
+
+    def plot_value_improvements(self, episodes_on_x=False, average_over=1):
+        value_improvements_movavg = moving_average(self.value_improvements,
+                                                   average_over)
+        plt.plot(range(len(value_improvements_movavg)),
+                 value_improvements_movavg)
+        plt.show()
+        TODO
+        return
+
+    def plot_returns(self, episodes_on_x=False, average_over=1):
+        returns_movavg = moving_average(self.returns,
+                                        average_over)
+        plt.plot(np.arange(len(returns_movavg)), returns_movavg)
+        plt.show()
+        TODO
+        return
+
+    def plot_all(self, average_over=1):
+        print()
+        len(self.value_improvements)
+        print()
+        self.plot_value_improvements(average_over=average_over)
+        print()
+        self.plot_returns(average_over=average_over)
+        return
+
+    # def animate(self):
+    #     state = tuple([self.policy_maps[i](x)
+    #                    for i, x in enumerate(env.reset())])
+    #     stop = False
+    #     the_return = 0
+    #     while not stop:
+    #         action = self.policy.policy[state]  # get greedy action
+    #         new_state, reward, stop, _ = env.step(action)
+    #         new_state = tuple([self.policy_maps[i](x)
+    #                            for i, x in enumerate(new_state)])
+    #         episode.append((state, action, reward))
+    #         the_return += reward
+    #         state = new_state
 
 
-# %% Tests
-
+# %% tests:
 env = gym.make("CartPole-v0")
+precision = 8
+treshold = 0.05
+agent = SillyRLAgent(precision, env, eps=0.15)
+agent.learn_environment(episodes_num=1000)
+agent.env_limits
+agent.learn(0.05, 2000, 200000)
+agent.plot_all(5)
 
-agent = SillyRLAgent(1000,
-                     env.action_space.n,
-                     env.observation_space.shape)
+
+# other:
+#   mountain car
+#   acrobot
+#   reacher
+# - text environments

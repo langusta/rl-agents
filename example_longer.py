@@ -17,7 +17,9 @@ def simulate(agent, render=False):
         cumulative_reward += reward
         if done:
             break
-    return cumulative_reward, t+1
+    if render:
+        env.render(close=True)
+    return cumulative_reward, t + 1
 
 
 env = gym.make('CartPole-v0')

@@ -1,9 +1,7 @@
 import gym
 import numpy as np
-from collections import Counter
 import math
 import copy
-import time
 import matplotlib.pyplot as plt
 from IPython import get_ipython
 
@@ -18,13 +16,18 @@ This agent is supposed to solve environments where:
 - actions are the same in each state
 - observations are cubes of real values of given shape
 
-Sort of Q-off-policy learning algorithm on eps-greedy soft-policy.
+I wanted to implement Monte Carlo algorithm, but during tests I discovered that
+it may get stuck on loopy policies (for example going back and forth on some
+two states). When I started thinking on how to modify the algorithm I ended up
+with some sort of Q-learning. I won't modify it further. Instead, I will modify
+the code so that further changes are treated as different agents and I will
+comapre them.
 
-TODO:
+Improvement ideas:
 - implement and check performance on cart agent
 - possible improvement - we can use the fact that our behaviour policy is of
   particular kind and get rid of weights - rethink if it is really possible and
-  if is then implement and compar
+  if is then implement and compare
 - update policy pi inside the loop that learns on episode (like in sutton) and
   compare
 - potentail improvement is: we could use whole paths (to learn) if we allow
@@ -33,11 +36,11 @@ TODO:
   Q(s,a) and continue - the question is what to do with weights then
   - probably reset path weight to 1
 - sensible terminate condition (rethink terminating state errors)
-- rethink state_acxtion_verrs initation as zeros - then we have potentially
+- rethink state_action_verrs initation as zeros - then we have potentially
     stochastic stop condition
 
 
-DEPRECATED The algorithm:
+Inicial algorithm idea (Monte Carlo agent):
 
 pi - deterministic policy we want to learn
 mi - eps-pi policy that we use to explore (it follows pi with 1-eps prob)
@@ -71,18 +74,13 @@ The above algorithm doesn't work on environmets with loops (potentially
 infinite states). Example that breaks it:
  S0, A1 -> S1, reward == 0
  S0, A0 -> S0, reward == -1
-
-While trying to solve it I changed the algorithm completely - it is no longer
-Monte Carlo. Currently I go through entire episode and update Q function on
-every state-action pair. After updating Q function I recompute values of
-states.
 """
 
 
 # %% Map interval to index-s
 class IntervalToIndex:
     """
-    Maps given interval to precision indexes starting with 0. Example:
+    Maps given interval to array indexes starting with 0. Example:
         dig_int = IntervalToIndex(a=0, b=2, precision=4)
         list(map(dig_int, [0, 1, 2]))
         # [0, 1, 2]
@@ -105,16 +103,6 @@ class IntervalToIndex:
 
 
 # %% super simple testing environment
-# based on example 4.1 from Sutton
-class SuttonEx4d1:
-    def __init__(self):
-        self.state = (2, 2)
-
-    def reset(self):
-        # state = ()
-        pass
-
-
 class DummySpace:
     def __init__(self, n, shape):
         self.n = n
@@ -168,8 +156,7 @@ class IntegerCubePolicy:
     A policy that can improve itself buahahahahaha!
     A state is of dimensions given by shape.
     """
-    def __init__(self, shape, number_of_actions, eps=0.1, alpha=0.05,
-                 terminate_after=1000):
+    def __init__(self, shape, number_of_actions, eps=0.1, alpha=0.05):
         """Initialize by random integers."""
         self.shape = shape
         self.number_of_actions = number_of_actions
@@ -242,7 +229,7 @@ class SillyRLAgent:
       - learning while exploring state space (fastes way - store episodes,
         learn from them later)
       - using returns instead of rewards whenever feasible (it should speed
-        up learning)
+        up learning) - another option is to use reward + value estimate
       - experience replay - remember some amount of previous episodes and
         do random changes from them when learning new episode
       - when in a state that didn't learn previously and neighbour states have
@@ -276,7 +263,12 @@ class SillyRLAgent:
         # TODO - correct so that observation space gets flattened (there might
         #   be some np functions to do this)
         #   - do the same for env_limits!!
-        self.shape = (precision,) * env.observation_space.shape[0]
+        if len(env.observation_space.shape) > 0:
+            self.shape = (precision,) * env.observation_space.shape[0]
+            self.observation_box = True
+        else:
+            self.shape = (precision,)
+            self.observation_box = False
         self.reset()
 
     def reset(self):
@@ -284,7 +276,10 @@ class SillyRLAgent:
         self.policy = IntegerCubePolicy(self.shape,
                                         self.number_of_actions,
                                         eps=self.eps)
-        self.env_limits = np.zeros(self.env.observation_space.shape + (2,))
+        if self.observation_box:
+            self.env_limits = np.zeros(self.env.observation_space.shape + (2,))
+        else:
+            self.env_limits = np.zeros((1, 2))
         self.value_improvements = []
         self.returns = []
         self.cum_steps = []
@@ -305,14 +300,20 @@ class SillyRLAgent:
                 redesign]
         """
         state = self.env.reset()
+        if not self.observation_box:
+            state = np.array([state])
         self.env_limits[:, 0] = state
         self.env_limits[:, 1] = state
         for _ in range(episodes_num):
             state = self.env.reset()
+            if not self.observation_box:
+                state = np.array([state])
             stop = False
             while not stop:
                 new_state, reward, stop, _ = self.env.step(
                     self.env.action_space.sample())
+                if not self.observation_box:
+                    new_state = np.array([new_state])
                 self.env_limits[:, 0] = np.minimum.reduce(
                     [self.env_limits[:, 0],
                      new_state])
@@ -326,6 +327,8 @@ class SillyRLAgent:
                             for i in range(self.env_limits.shape[0])]
 
     def get_cube_state(self, env_state):
+        if not self.observation_box:
+            env_state = np.array([env_state])
         return tuple([self.policy_maps[i](x)
                       for i, x in enumerate(env_state)])
 
@@ -377,6 +380,8 @@ class SillyRLAgent:
             state = new_state
         self.env.render(close=True)
         print("The return was: {}".format(the_return))
+        print("The last state:")
+        print(state)
 
     def plot_v_or_r(self, what, episodes_on_x=False, average_over=1):
         if what == 'v':
@@ -413,7 +418,7 @@ class SillyRLAgent:
 # %% tests with MinimalEnv
 # let's test!
 env = MinimalEnv()
-precision = 10
+precision = 15
 agent = SillyRLAgent(precision, env, eps=0.10, allow_determinism=False)
 agent.learn_environment(episodes_num=1000)
 agent.env_limits
@@ -428,13 +433,13 @@ agent.policy.values_improvement
 
 # %% tests with CartPole
 envi = gym.make("CartPole-v0")
-precision = 10
+precision = 15
 treshold = 0.05
-agent = SillyRLAgent(precision, envi, eps=0.15)
+agent = SillyRLAgent(precision, envi, eps=0.1)
 agent.learn_environment(episodes_num=1000)
 print()
 agent.env_limits
-agent.learn(0.05, 8000, 800000)
+agent.learn(0.05, 10000, 1000000)
 agent.plot_all(5)
 print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
       agent.cum_steps[-1]))
@@ -445,3 +450,105 @@ agent.play()
 #   acrobot
 #   reacher
 # - text environments
+
+
+# %% MountainCar-v0
+envi = gym.make("MountainCar-v0")
+precision = 15
+treshold = 0.05
+agent = SillyRLAgent(precision, envi, eps=0.15)
+agent.learn_environment(episodes_num=1000)
+print()
+agent.env_limits
+agent.learn(0.05, 10000, 1000000)
+agent.plot_all(5)
+print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
+      agent.cum_steps[-1]))
+agent.play()
+
+# %% LunarLander-v2
+envi = gym.make("LunarLander-v2")
+precision = 6  # carefull here - we can easily run out of ram!! should be <= 10
+treshold = 0.05
+agent = SillyRLAgent(precision, envi, eps=0.15)
+agent.learn_environment(episodes_num=500)
+print()
+agent.env_limits
+agent.learn(0.05, 1, 100)
+agent.plot_all(5)
+print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
+      agent.cum_steps[-1]))
+agent.play()
+
+# %% FrozenLake
+envi = gym.make("FrozenLake-v0")
+precision = 17
+treshold = 0.05
+agent = SillyRLAgent(precision, envi, eps=0.15)
+agent.learn_environment(episodes_num=1000)
+print()
+agent.env_limits
+agent.learn(-1, 10000, 1000000)
+agent.plot_all(1)
+print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
+      agent.cum_steps[-1]))
+agent.play()
+agent.policy.policy
+agent.policy.state_action_values
+len(agent.value_improvements)
+print()
+agent.policy.values_improvement
+
+# %% CliffWalking
+# doesn't really work - default policy  makes it almost impossible for the
+# episode to end
+envi = gym.make("CliffWalking-v0")
+precision = 17
+treshold = 0.05
+agent = SillyRLAgent(precision, envi, eps=0.15)
+agent.learn_environment(episodes_num=10)
+print()
+agent.env_limits
+agent.learn(-1, 10, 1000)
+agent.plot_all(1)
+print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
+      agent.cum_steps[-1]))
+agent.play()
+agent.policy.policy
+agent.policy.state_action_values
+len(agent.value_improvements)
+print()
+agent.policy.values_improvement
+
+# %% Blackjack
+envi = gym.make("Blackjack-v0")
+envi.observation_space
+# Tuple(Discrete(32), Discrete(11), Discrete(2))
+# silly agent cannot handle this
+
+# %% KellyCoinflip
+envi = gym.make("KellyCoinflip-v0")
+envi.observation_space
+# Tuple(Box(1,), Discrete(301))
+# again to hard to use..
+
+# %% Taxi
+envi = gym.make("Taxi-v2")
+# envi.observation_space
+#   500
+precision = 501
+treshold = 0.05
+agent = SillyRLAgent(precision, envi, eps=0.15)
+agent.learn_environment(episodes_num=100)
+print()
+agent.env_limits
+agent.learn(-1, 100, 10000)
+agent.plot_all(1)
+print("\nNumber of episodes: {}\nNumber of steps: {}".format(agent.episode_cnt,
+      agent.cum_steps[-1]))
+agent.play()
+agent.policy.policy
+agent.policy.state_action_values
+len(agent.value_improvements)
+print()
+agent.policy.values_improvement

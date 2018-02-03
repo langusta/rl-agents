@@ -9,9 +9,11 @@ class QlearningCh6(BaseAgent):
         State and action is an array of length 1, containing
             respective number of state or action.
     """
-    def __init__(self, max_states, max_actions, gamma, eps, alpha):
-        super().__init__()
+    def __init__(self, max_states, max_actions, gamma, eps, alpha,
+                 ver="v0"):
+        super().__init__(ver)
         self.name = "QlearningCh6"
+        self.full_name = self.name + "-" + ver
 
         self.gamma = gamma
         self.eps = eps

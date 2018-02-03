@@ -10,7 +10,7 @@ class MinimalEnv:
     2   - terminal state
     and two actions: 0 - go up, 1 go down
     """
-    def __init__(self, ver=""):
+    def __init__(self, ver="v0"):
         self.name = "MinimalEnv"
         self.version = ver
         self.full_name = self.name + "-" + ver

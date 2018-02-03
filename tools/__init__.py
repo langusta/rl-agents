@@ -1,5 +1,7 @@
 import numpy as np
 import math
+import os
+import pandas as pd
 
 
 class IntervalToIndex:
@@ -52,3 +54,38 @@ def train(agent, env, debug=False):
         if env.finished():
             break
     return agent, history
+
+
+def save_results(agent, environment,
+                 force=False,
+                 base='/home/langust/Research/AIS/rl-agents'):
+    folder = base + "/results/" + environment.name
+    file_name = environment.full_name + "__" + agent.full_name + ".csv"
+    if not (os.path.exists(folder) and os.path.isdir(folder)):
+        os.mkdir(folder)
+    if not (os.path.exists(folder + "/" + file_name)) or force:
+        value_improvements = agent.value_improvements
+        if len(agent.value_improvements) < 1:
+            value_improvements = [0] * len(agent.steps)
+        data = pd.DataFrame({
+            "steps": agent.steps,
+            "returns": agent.returns,
+            "value_improvements": value_improvements})
+        data.to_csv(folder + "/" + file_name)
+
+
+# to consider - should the original save function save the whole agent?
+def load_results():
+    pass
+
+
+from envs.msc import MinimalEnv
+from agents.sutton import QlearningCh6
+from tools import train
+
+agent, history = train(QlearningCh6(3, 2, 0.9, 0.1, 0.2), MinimalEnv(),
+                       debug=True)
+agent.steps
+save_results(agent, MinimalEnv(), force=True)
+stuf = pd.DataFrame.from_csv("results/MinimalEnv/MinimalEnv-v0__QlearningCh6-v0.csv")
+stuf.head()

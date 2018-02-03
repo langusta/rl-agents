@@ -57,9 +57,10 @@ class BaseEnv:
     All envs should implement this class.
     """
 
-    def __init__(self, ver=""):
+    def __init__(self, ver="v0"):
         self.name = "BaseEnv"
         self.version = ver
+        self.full_name = self.name + "-" + ver
         self.state = SpaceDesc(0, [])
         self.action = SpaceDesc(0, [])
         pass

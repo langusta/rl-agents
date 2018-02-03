@@ -30,7 +30,7 @@ agent = SomeAgent()
     #   agent.returns == [-11, -15, -9]
     plt.plot(np.arange(len(agent.returns)), agent.returns)
     # np.arange(len(agent.returns)) is array with episode numbers
-    plt.plot(agent.episodes, agent.value_improvements)
+    plt.plot(agent.steps, agent.value_improvements)
 
     agent.name  # is its name
     agent.step  # is the last step
@@ -45,10 +45,12 @@ agent = SomeAgent()
 
 class BaseAgent:
     """
-    All agents should implement class.
+    All agents should implement this class.
     """
-    def __init__(self):
+    def __init__(self, ver="v0"):
         self.name = "BaseAgent"
+        self.version = ver
+        self.full_name = self.name + "-" + ver
         self.step = 0
         self.steps = []
         self.episode = 0

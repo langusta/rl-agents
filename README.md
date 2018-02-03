@@ -1,9 +1,11 @@
 
 Learning to train RL-agents.
 
-The plan is to experiment with openai gym, implement some calassic algorithms, try some of my own and some state of the art.
+The plan is to experiment with openai gym, implement some classic algorithms, try some of my own and some state of the art.
 
 ---
+
+Some assumptions of how this works are given in the `__init__.py` files of `envs` and `agents` libraries. The heart is the `train` function from the `tools` library.
 
 TODO:
 

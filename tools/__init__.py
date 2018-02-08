@@ -2,6 +2,7 @@ import numpy as np
 import math
 import os
 import pandas as pd
+import matplotlib.pyplot as plt
 
 
 class IntervalToIndex:
@@ -71,21 +72,46 @@ def save_results(agent, environment,
             "steps": agent.steps,
             "returns": agent.returns,
             "value_improvements": value_improvements})
-        data.to_csv(folder + "/" + file_name)
+        data.to_csv(folder + "/" + file_name, index=False)
 
 
-# to consider - should the original save function save the whole agent?
-def load_results():
+def load_results(agent, environment,
+                 base='/home/langust/Research/AIS/rl-agents'):
+    """returns Pandas DataFrame"""
+    full_path = base + '/results/' + environment.name + \
+        '/' + environment.full_name + '__' + \
+        agent.full_name + '.csv'
+    if os.path.exists(full_path):
+        return pd.read_csv(full_path)
+    else:
+        print("No results found for: " + agent.full_name)
+        return pd.DataFrame()
+
+
+def plot_multiple(*args, figsize=(8, 6)):
+    plt.subplots(figsize=figsize)
+    for x, y, label in args:
+        plt.plot(x, y, label=label)
+    leg = plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
+                     ncol=2, mode="expand", shadow=True, fancybox=True)
+    leg.get_frame().set_alpha(0.7)
+    plt.show()
+
+
+def plot_agents(agents, environment, what='rv', figsize=(8, 6)):
+    rets = []
+    vals = []
+    for agent in agents:
+        res = load_results(agent, environment)
+        rets.append((res.steps, res.returns, agent.full_name))
+        vals.append((res.steps, res.value_improvements, agent.full_name))
+    if 'v' in what:
+        plot_multiple(*vals, figsize=figsize)
+    if 'r' in what:
+        plot_multiple(*rets, figsize=figsize)
+
+
+def save_agent(agent, environment, force=False,
+               base='/home/langust/Research/AIS/rl-agents'):
+    """Save entire agent"""
     pass
-
-
-from envs.msc import MinimalEnv
-from agents.sutton import QlearningCh6
-from tools import train
-
-agent, history = train(QlearningCh6(3, 2, 0.9, 0.1, 0.2), MinimalEnv(),
-                       debug=True)
-agent.steps
-save_results(agent, MinimalEnv(), force=True)
-stuf = pd.DataFrame.from_csv("results/MinimalEnv/MinimalEnv-v0__QlearningCh6-v0.csv")
-stuf.head()

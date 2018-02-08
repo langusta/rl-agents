@@ -2,7 +2,7 @@ import numpy as np
 from agents import BaseAgent
 
 
-class QlearningCh6(BaseAgent):
+class Sutton(BaseAgent):
     """
         Q-learning algorithm from chapter 6
         Works for discrete state spaces and discrete actions.
@@ -10,10 +10,10 @@ class QlearningCh6(BaseAgent):
             respective number of state or action.
     """
     def __init__(self, max_states, max_actions, gamma, eps, alpha,
-                 ver="v0"):
+                 ver="v0", name="Sutton"):
         super().__init__(ver)
-        self.name = "QlearningCh6"
-        self.full_name = self.name + "-" + ver
+        self.name = name
+        self.full_name = name + "-" + ver
 
         self.gamma = gamma
         self.eps = eps
@@ -31,11 +31,42 @@ class QlearningCh6(BaseAgent):
 
     def learn(self, state, action, reward, stop):
         super().learn(state, action, reward, stop)
+
+
+class QlearningCh6(Sutton):
+    def __init__(self, max_states, max_actions, gamma, eps, alpha,
+                 ver="v0"):
+        super().__init__(max_states, max_actions, gamma, eps, alpha, ver,
+                         name="QlearningCh6")
+
+    def learn(self, state, action, reward, stop):
+        super().learn(state, action, reward, stop)
         if self.prev[0] is not None:
-            self.q[self.prev[0][0], self.prev[1][0]] += self.alpha * \
-                (self.prev[2] + self.gamma
+            pstate, paction, preward = self.prev  # p... == previous ...
+            self.q[pstate[0], paction[0]] += self.alpha * \
+                (preward + self.gamma
                  * self.q[state[0], :].max()
-                 - self.q[self.prev[0][0], self.prev[1][0]])
+                 - self.q[pstate[0], paction[0]])
+        if not stop:
+            self.prev = (state, action, reward)
+        else:
+            self.prev = (None, None, None)
+
+
+class SarsaCh6(Sutton):
+    def __init__(self, max_states, max_actions, gamma, eps, alpha,
+                 ver="v0"):
+        super().__init__(max_states, max_actions, gamma, eps, alpha, ver,
+                         name="SarsaCh6")
+
+    def learn(self, state, action, reward, stop):
+        super().learn(state, action, reward, stop)
+        if self.prev[0] is not None:
+            pstate, paction, preward = self.prev  # p... == previous ...
+            self.q[pstate[0], paction[0]] += self.alpha * \
+                (preward + self.gamma
+                 * self.q[state[0], action[0]]
+                 - self.q[pstate[0], paction[0]])
         if not stop:
             self.prev = (state, action, reward)
         else:

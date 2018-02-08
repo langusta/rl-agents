@@ -3,7 +3,7 @@ from collections import namedtuple
 version = "0.1.0"
 available_envs = {
     "msc": ["MinimalEnv"],
-    "openai": []
+    "sutton": ["CliffEnv"]
 }
 idea = """
 States, actions, rewards:

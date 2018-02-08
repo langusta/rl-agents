@@ -1,7 +1,7 @@
 
-version = "0.1.0"
+version = "0.1.1"
 available_agents = {
-    "sutton": ["QlearningCh6"],
+    "sutton": ["QlearningCh6", "SarsaCh6"],
     "my_agents": []
 }
 idea = """

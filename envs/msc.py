@@ -19,6 +19,7 @@ class MinimalEnv:
         self.state = 0
         self.step = 0
         self.episode = 0
+        self.max_episode = 20
 
         self.state = 0
         self.behaviour = {  # (state, action): (new state, reward)
@@ -45,7 +46,7 @@ class MinimalEnv:
         return (np.array([self.state]), reward, self.state == 2, 0)
 
     def finished(self):
-        if self.step > 1000 or self.episode > 100:
+        if self.episode > self.max_episode:
             return True
         return False
 

@@ -47,6 +47,10 @@ The interface is inspired by openai gym:
     # env should know if enough learning has been done:
     env.finished()
     # returns True or False
+    # we want to define the 'finished' condition in terms of
+        the number of episodes (like: if episode >= max_episode)
+    # this makes plotting graphs easier
+    # (the list with results is alwas of the same length)
 """
 
 SpaceDesc = namedtuple("SpaceDesc", ["length", "type"])

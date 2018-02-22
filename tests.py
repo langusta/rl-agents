@@ -22,8 +22,8 @@ qlearner, history = train(QlearningCh6(3, 2, 0.9, 0.1, 0.2), MinimalEnv(),
                        debug=True)
 sarsa, history = train(SarsaCh6(3, 2, 0.9, 0.2, 0.2), MinimalEnv(),
                         debug=True)
-save_results(qlearner, MinimalEnv(), force=True)
-save_results(sarsa, MinimalEnv(), force=True)
+save_results(qlearner, MinimalEnv())
+save_results(sarsa, MinimalEnv())
 plot_agents([qlearner, sarsa], MinimalEnv(), what='r')
 
 qlearner.q
@@ -31,10 +31,10 @@ sarsa.q
 
 # %% let's test CliffWalking
 cenv = CliffEnv()
-cenv.max_episode = 50
+cenv.max_episode = 100
 qlearn, qhistory = train(QlearningCh6(18, 4, 1.0, 0.1, 0.3), cenv, debug=True)
 cenv = CliffEnv()
-cenv.max_episode = 50
+cenv.max_episode = 100
 sarsa, shistory = train(SarsaCh6(18, 4, 1.0, 0.1, 0.3), cenv, debug=True)
 save_results(qlearn, CliffEnv(), force=True)
 save_results(sarsa, CliffEnv(), force=True)
@@ -42,6 +42,8 @@ plot_agents([qlearn, sarsa], CliffEnv(), what='r')
 
 # qlearn.q
 # sarsa.q
+
+# %% save videos:
 len(qhistory)
 len(shistory)
 

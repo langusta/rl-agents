@@ -58,21 +58,36 @@ def train(agent, env, debug=False):
 
 
 def save_results(agent, environment,
-                 force=False,
+                 del_if_exist=False,
                  base='/home/langust/Research/AIS/rl-agents'):
     folder = base + "/results/" + environment.name
     file_name = environment.full_name + "__" + agent.full_name + ".csv"
+    full_path = folder + "/" + file_name
+    header = True
     if not (os.path.exists(folder) and os.path.isdir(folder)):
         os.mkdir(folder)
-    if not (os.path.exists(folder + "/" + file_name)) or force:
-        value_improvements = agent.value_improvements
-        if len(agent.value_improvements) < 1:
-            value_improvements = [0] * len(agent.steps)
-        data = pd.DataFrame({
-            "steps": agent.steps,
-            "returns": agent.returns,
-            "value_improvements": value_improvements})
-        data.to_csv(folder + "/" + file_name, index=False)
+        run = 0
+    else:
+        if os.path.exists(full_path):
+            if del_if_exist:
+                run = 0
+                os.remove(full_path)
+            else:
+                tmp = pd.read_csv(full_path)
+                run = tmp.run.max() + 1
+                header = False
+        else:
+            run = 0
+    value_improvements = agent.value_improvements
+    if len(agent.value_improvements) < 1:
+        value_improvements = [0] * len(agent.steps)
+    data = pd.DataFrame({
+        "run": run,
+        "episodes": range(len(agent.steps)),
+        "steps": agent.steps,
+        "returns": agent.returns,
+        "value_improvements": value_improvements})
+    data.to_csv(full_path, mode="a", index=False, header=header)
 
 
 def load_results(agent, environment,
@@ -98,17 +113,27 @@ def plot_multiple(*args, figsize=(8, 6)):
     plt.show()
 
 
-def plot_agents(agents, environment, what='rv', figsize=(8, 6)):
+def plot_agents(agents, environment, what='rv', x_ax='s', figsize=(8, 6)):
     rets = []
     vals = []
     for agent in agents:
         res = load_results(agent, environment)
-        rets.append((res.steps, res.returns, agent.full_name))
-        vals.append((res.steps, res.value_improvements, agent.full_name))
+        if x_ax == 's':
+            res['x'] = res.steps
+        else:
+            res['x'] = res.episodes
+        r_agg = res.groupby("episodes").agg({'x': 'mean',
+                                             'returns': 'mean',
+                                             'value_improvements': 'mean'})
+        cnt = str(res.run.max() + 1)  # run starts with 0
+
+        rets.append((r_agg.x, r_agg.returns, agent.full_name + " av" + cnt))
+        vals.append((r_agg.x, r_agg.value_improvements, agent.full_name + " av" + cnt))
     if 'v' in what:
         plot_multiple(*vals, figsize=figsize)
     if 'r' in what:
         plot_multiple(*rets, figsize=figsize)
+
 
 
 def save_agent(agent, environment, force=False,

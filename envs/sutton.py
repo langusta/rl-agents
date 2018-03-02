@@ -14,8 +14,8 @@ class CliffEnv:
         self.version = ver
         self.full_name = self.name + "-" + ver
 
-        self.width = 6
-        self.height = 3
+        self.width = 12
+        self.height = 4
         self.states = self.width * self.height
         self.state = SpaceDesc(1, [self.states])
         self.action = SpaceDesc(1, [self.states])

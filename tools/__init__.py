@@ -103,17 +103,19 @@ def load_results(agent, environment,
         return pd.DataFrame()
 
 
-def plot_multiple(*args, figsize=(8, 6)):
+def plot_multiple(*args, figsize=(8, 6), mov_av=1, ymin=None, ymax=None):
     plt.subplots(figsize=figsize)
     for x, y, label in args:
-        plt.plot(x, y, label=label)
+        plt.plot(x[mov_av-1:], moving_average(y, mov_av), label=label)
     leg = plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3,
                      ncol=2, mode="expand", shadow=True, fancybox=True)
     leg.get_frame().set_alpha(0.7)
+    axes = plt.gca()
+    axes.set_ylim([ymin,ymax])
     plt.show()
 
 
-def plot_agents(agents, environment, what='rv', x_ax='s', figsize=(8, 6)):
+def plot_agents(agents, environment, what='rv', x_ax='s', figsize=(8, 6), **kwargs):
     rets = []
     vals = []
     for agent in agents:
@@ -127,12 +129,12 @@ def plot_agents(agents, environment, what='rv', x_ax='s', figsize=(8, 6)):
                                              'value_improvements': 'mean'})
         cnt = str(res.run.max() + 1)  # run starts with 0
 
-        rets.append((r_agg.x, r_agg.returns, agent.full_name + " av" + cnt))
-        vals.append((r_agg.x, r_agg.value_improvements, agent.full_name + " av" + cnt))
+        rets.append((r_agg.x.tolist(), r_agg.returns.tolist(), agent.full_name + " av" + cnt))
+        vals.append((r_agg.x.tolist(), r_agg.value_improvements.tolist(), agent.full_name + " av" + cnt))
     if 'v' in what:
-        plot_multiple(*vals, figsize=figsize)
+        plot_multiple(*vals, figsize=figsize, **kwargs)
     if 'r' in what:
-        plot_multiple(*rets, figsize=figsize)
+        plot_multiple(*rets, figsize=figsize, **kwargs)
 
 
 
